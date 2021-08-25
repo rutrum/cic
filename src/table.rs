@@ -64,6 +64,19 @@ impl Table {
 
     /// Add iterator for column widths along with row value?
     /// for (cell, width) in row.iter().zip(table.col_widths().iter()) {
+    /// actually do fmt
+    pub fn fmt_iter(&self) -> Vec<Vec<String>>{
+        let widths = self.col_widths();
+        self.data.iter().map(|row|
+            row.iter().zip(widths.iter()).map(|(cell, width)| {
+                let mut p = cell.clone();
+                for _ in cell.len()..(*width as usize) {
+                    p.push(' ');
+                }
+                p
+            }).collect()
+        ).collect()
+    }
 
     /// Gets the internal data
     /// Should be formalized as iterators
@@ -81,9 +94,20 @@ impl Table {
         self.data[c.y][c.x] = new;
     }
 
+    /// Adds new row before the given index
+    pub fn add_row(&mut self, r: usize) {
+        let (w, _) = self.dims();
+        let new_row = vec![String::new(); w];
+        self.data.insert(r, new_row);
+    }
+
     /// Clears the value in the table.
     pub fn clear(&mut self, c: Cursor) {
         self.update(c, String::new());
+    }
+
+    pub fn delete_row(&mut self, c: &mut Cursor) {
+        self.data.remove(c.y);
     }
 
     /// Writes the data as a csv to the given path.

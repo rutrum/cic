@@ -7,6 +7,33 @@ pub use render::Renderer;
 mod table;
 pub use table::Table;
 
+#[derive(Clone, Copy, Debug)]
+pub enum Mode {
+    Prompt(Prompt),
+    Table,
+    Insert,
+    Exit,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum Prompt {
+    EditReplace,
+    EditAppend,
+    Command,
+}
+
+impl Prompt {
+    fn ps2(self) -> String {
+        use Prompt::*;
+        match self {
+            EditReplace => "edit: ",
+            EditAppend => "edit: ",
+            Command => ":",
+        }.to_string()
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub enum Direction {
     Up, Down, Left, Right
 }
@@ -17,8 +44,8 @@ pub struct Location(pub usize, pub usize);
 /// needs a table for context (also usize)
 #[derive(Clone, Copy, Debug)]
 pub struct Cursor {
-    x: usize,
-    y: usize,
+    pub x: usize,
+    pub y: usize,
 }
 
 impl Cursor {
