@@ -5,6 +5,7 @@ authors = ["David Purdum <purdum41@gmail.com>"]
 edition = "2018"
 license = "MIT"
 readme = "README.md"
+description = "An interactive csv editor."
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
