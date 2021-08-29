@@ -1,99 +1,132 @@
-use crossterm::event::{self, Event, KeyEvent, KeyCode};
-use crate::Direction;
+use crossterm::event::{self, Event, KeyModifiers, KeyCode};
 use crate::Mode;
-use crate::Prompt;
+use crate::PromptType;
 
-pub enum TableEvent {
-    MoveCursor(Direction),
-    EnterPrompt(Prompt),
-    EnterInsertMode,
+#[derive(Clone, Copy, Debug)]
+pub enum Dir {
+    Up, Down, Left, Right,
+    Top, Bottom, Start, End
+}
+
+/// Actions are unique and have the same
+/// behavior no matter the current mode.
+pub enum Action {
+    MoveCursor(Dir),
+
+    EnterPrompt(PromptType),
+    Prompt(PromptType, PromptAction),
+
+    EnterMode(Mode),
+
+    Append(char),
+    Pop,
+
+    CarriageReturn,
+
     ClearCell,
-    NewRowBelow,
-    NewRowAbove,
+
+    AddRowAbove,
+    AddRowBelow,
     DeleteRow,
+
+    AddColLeft,
+    AddColRight,
+    DeleteCol,
+
     Save,
     Quit,
 }
 
-pub enum PromptEvent {
-    Literal(char),
+pub enum PromptAction {
+    Push(char),
     Backspace,
     Submit,
     Exit,
 }
 
-pub enum InsertEvent {
-    Literal(char),
-    NextCol,
-    NextRow,
-    Backspace,
-    Exit,
-}
-
-pub fn read_table_event() -> Option<TableEvent> {
-    use TableEvent::*;
-    use Direction::*;
-    match event::read().unwrap() {
-        Event::Key(keyevent) => match keyevent {
-            KeyEvent{ code: KeyCode::Char('k') | KeyCode::Up, .. } => Some(MoveCursor(Up)),
-            KeyEvent{ code: KeyCode::Char('j') | KeyCode::Down, .. } => Some(MoveCursor(Down)),
-            KeyEvent{ code: KeyCode::Char('h') | KeyCode::Left, .. } => Some(MoveCursor(Left)),
-            KeyEvent{ code: KeyCode::Char('l') | KeyCode::Right, .. } => Some(MoveCursor(Right)),
-            KeyEvent{ code: KeyCode::Char('q') | KeyCode::Esc, .. } => Some(Quit),
-            KeyEvent{ code: KeyCode::Char('S'), .. } => Some(ClearCell),
-            KeyEvent{ code: KeyCode::Char('o'), .. } => Some(NewRowBelow),
-            KeyEvent{ code: KeyCode::Char('O'), .. } => Some(NewRowAbove),
-            KeyEvent{ code: KeyCode::Char('D'), .. } => Some(DeleteRow),
-            KeyEvent{ code: KeyCode::Char('I'), .. } => Some(EnterInsertMode),
-            KeyEvent{ code: KeyCode::Char('r'), .. } => Some(EnterPrompt(Prompt::EditReplace)),
-            KeyEvent{ code: KeyCode::Char('a'), .. } => Some(EnterPrompt(Prompt::EditAppend)),
-            KeyEvent{ code: KeyCode::Char(':'), .. } => Some(EnterPrompt(Prompt::Command)),
-            _ => None,
-        },
-        _ => None,
+pub fn get_actions(mode: Mode) -> Vec<Action> {
+    match mode {
+        Mode::Table => table_mode_actions(),
+        Mode::Prompt(p) => prompt_mode_actions(p),
+        Mode::Insert => insert_mode_actions(),
+        _ => Vec::new(),
     }
 }
 
-pub fn read_prompt_event() -> Option<PromptEvent> {
-    use PromptEvent::*;
+pub fn prompt_mode_actions(p: PromptType) -> Vec<Action> {
+    use Action::*;
+    use PromptAction::*;
     match event::read().unwrap() {
-        Event::Key(keyevent) => match keyevent {
-            KeyEvent{ code: KeyCode::Esc, .. } => Some(Exit),
-            KeyEvent{ code: KeyCode::Enter, .. } => Some(Submit),
-            KeyEvent{ code: KeyCode::Backspace, .. } => Some(Backspace),
-            _ => if let KeyCode::Char(c) = keyevent.code {
-                Some(Literal(c))
-            } else {
-                None
-            },
+        Event::Key(keyevent) => match keyevent.code {
+            KeyCode::Esc => vec![Prompt(p, Exit)],
+            KeyCode::Enter => vec![Prompt(p, Submit)],
+            KeyCode::Backspace => vec![Prompt(p, Backspace)],
+            KeyCode::Char(c) => vec![Prompt(p, Push(c))],
+            _ => Vec::new(),
         }
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
-pub fn read_insert_event() -> Option<InsertEvent> {
-    use InsertEvent::*;
+pub fn insert_mode_actions() -> Vec<Action> {
+    use Action::*;
     match event::read().unwrap() {
-        Event::Key(keyevent) => match keyevent {
-            KeyEvent{ code: KeyCode::Tab, .. } => Some(NextCol),
-            KeyEvent{ code: KeyCode::Enter, .. } => Some(NextRow),
-            KeyEvent{ code: KeyCode::Backspace, .. } => Some(Backspace),
-            KeyEvent{ code: KeyCode::Esc, .. } => Some(Exit),
-            _ => if let KeyCode::Char(c) = keyevent.code {
-                Some(Literal(c))
-            } else {
-                None
-            },
+        Event::Key(keyevent) => match (keyevent.code, keyevent.modifiers.contains(KeyModifiers::SHIFT)) {
+            (KeyCode::Up, _) => vec![MoveCursor(Dir::Up)],
+            (KeyCode::Down, _) => vec![MoveCursor(Dir::Down)],
+            (KeyCode::Left, _) => vec![MoveCursor(Dir::Left)],
+            (KeyCode::Right, _) => vec![MoveCursor(Dir::Right)],
+
+            (KeyCode::Esc, _) => vec![EnterMode(Mode::Table)],
+            (KeyCode::Backspace, _) => vec![Pop],
+            (KeyCode::Tab, _) => vec![MoveCursor(Dir::Right)],
+            (KeyCode::BackTab, _) => vec![MoveCursor(Dir::Left)],
+            (KeyCode::Enter, _) => vec![CarriageReturn],
+            (KeyCode::Char(c), _) => vec![Append(c)],
+            _ => Vec::new(),
         }
-        _ => None,
+        _ => Vec::new(),
+    }
+}
+
+pub fn table_mode_actions() -> Vec<Action> {
+    use Action::*;
+    match event::read().unwrap() {
+        Event::Key(keyevent) => match keyevent.code {
+            KeyCode::Char('k') | KeyCode::Up => vec![MoveCursor(Dir::Up)],
+            KeyCode::Char('j') | KeyCode::Down => vec![MoveCursor(Dir::Down)],
+            KeyCode::Char('h') | KeyCode::Left => vec![MoveCursor(Dir::Left)],
+            KeyCode::Char('l') | KeyCode::Right => vec![MoveCursor(Dir::Right)],
+            KeyCode::Char('g') => vec![MoveCursor(Dir::Top)],
+            KeyCode::Char('G') => vec![MoveCursor(Dir::Bottom)],
+            KeyCode::Char('0') => vec![MoveCursor(Dir::Start)],
+            KeyCode::Char('$') => vec![MoveCursor(Dir::End)],
+
+            KeyCode::Esc => vec![Quit],
+            KeyCode::Char('S') => vec![ClearCell],
+            KeyCode::Char('o') => vec![AddRowBelow],
+            KeyCode::Char('O') => vec![AddRowAbove],
+            KeyCode::Char('D') => vec![DeleteRow],
+
+            KeyCode::Char('I') => vec![EnterMode(Mode::Insert)],
+
+            KeyCode::Char('r') => vec![EnterPrompt(PromptType::EditReplace)],
+            KeyCode::Char('a') => vec![EnterPrompt(PromptType::EditAppend)],
+            KeyCode::Char(':') => vec![EnterPrompt(PromptType::Command)],
+            _ => Vec::new(),
+        }
+        _ => Vec::new(),
     }
 }
 
 /// Returns a Command from a string typed at the command prompt
-pub fn from_prompt(s: String) -> Option<TableEvent> {
-    use TableEvent::*;
-    match s.as_str() {
-        "w" | "write" => Some(Save),
-        _ => None,
+pub fn from_prompt(s: String) -> Vec<Action> {
+    use Action::*;
+    match s.to_lowercase().as_str() {
+        "w" | "write" => vec![Save],
+        "q" | "quit" => vec![Quit],
+        "addcol" => vec![AddColRight],
+        "delcol" => vec![DeleteCol],
+        _ => Vec::new(),
     }
 }

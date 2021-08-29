@@ -28,3 +28,5 @@ types of modes:
 * insert
 
 Maybe separate user input and actual commands?
+
+terminal event + mode -> action

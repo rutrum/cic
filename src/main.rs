@@ -1,14 +1,15 @@
 use std::env;
 
-use cic::{Direction, Prompt, Mode, Cursor, Table, Renderer, input::{self, TableEvent, PromptEvent}};
+use cic::{align_anchor, Action, PromptAction, Dir, PromptType, Mode, Cursor, Table, Renderer, input};
 
 struct State {
-    pub table: Table,
-    pub r: Renderer,
-    pub c: Cursor,
-    pub m: Mode,
-    pub buf: String,
-    pub path: String,
+    table: Table,
+    r: Renderer,
+    c: Cursor,
+    anchor: Cursor,
+    m: Mode,
+    buf: String,
+    path: String,
 }
 
 impl State {
@@ -17,9 +18,22 @@ impl State {
             table: Table::from_path(&path),
             r: Renderer::new(),
             c: Cursor::new(),
+            anchor: Cursor::new(),
             m: Mode::Table,
             buf: String::new(),
             path: path.to_string(),
+        }
+    }
+
+    fn new() -> Self {
+        Self {
+            table: Table::new(),
+            r: Renderer::new(),
+            c: Cursor::new(),
+            anchor: Cursor::new(),
+            m: Mode::Table,
+            buf: String::new(),
+            path: String::new()
         }
     }
 
@@ -29,6 +43,131 @@ impl State {
 
     fn set_buf(&mut self, s: &String) {
         self.buf = s.clone();
+    }
+
+    fn draw_table(&mut self) {
+        align_anchor(&mut self.anchor, self.c);
+        self.r.draw_table(&self.table, &self.c, &self.anchor);
+    }
+
+    fn draw_prompt(&mut self, p: PromptType) {
+        self.r.draw_prompt(p, &self.buf);
+    }
+
+    fn do_action(&mut self, action: Action) {
+        use Action::*;
+        match action {
+            MoveCursor(dir) => {
+                self.c.move_dir(dir, &self.table);
+                self.draw_table();
+            }
+            EnterPrompt(p) => {
+                match p {
+                    PromptType::EditAppend => {
+                        let v = self.table.get(self.c);
+                        self.set_buf(&v);
+                        self.draw_prompt(p);
+                    }
+                    _ => {
+                        self.set_buf(&String::new());
+                        self.draw_prompt(p);
+                    }
+                }
+                self.m = Mode::Prompt(p);
+            }
+
+            Prompt(p_type, p_action) => match p_action {
+                PromptAction::Push(c) => {
+                    self.buf.push(c);
+                    self.draw_prompt(p_type);
+                }
+                PromptAction::Backspace => { 
+                    self.buf.pop(); 
+                    self.draw_prompt(p_type);
+                },
+                PromptAction::Submit => {
+                    if let PromptType::EditReplace = p_type {
+                        let b = self.take_buf();
+                        self.table.update(self.c, b);
+
+                    } else if let PromptType::EditAppend = p_type {
+                        let b = self.take_buf();
+                        self.table.update(self.c, b);
+
+                    } else if let PromptType::Command = p_type {
+                        for action in input::from_prompt(self.take_buf()) {
+                            self.do_action(action);
+                        }
+                    }
+                    self.r.clear_prompt();
+                    if let Mode::Prompt(_) = self.m {
+                        self.m = Mode::Table;
+                    }
+                    self.draw_table();
+                }
+                PromptAction::Exit => {
+                    self.r.clear_prompt();
+                    self.m = Mode::Table;
+                }
+            }
+            ClearCell => self.table.clear(self.c),
+
+            AddRowBelow => {
+                self.table.add_row_after(self.c);
+                self.c.move_dir(Dir::Down, &self.table);
+                self.draw_table();
+            }
+            AddRowAbove => {
+                self.table.add_row_before(self.c);
+                self.draw_table();
+            }
+            DeleteRow => {
+                self.table.delete_row(&mut self.c);
+                self.draw_table();
+            }
+
+            AddColLeft => {
+                self.table.add_col_before(self.c);
+                self.c.move_dir(Dir::Left, &self.table);
+                self.draw_table();
+            }
+            AddColRight => {
+                self.table.add_col_after(self.c);
+                self.draw_table();
+            }
+            DeleteCol => {
+                self.table.delete_col(&mut self.c);
+                self.draw_table();
+            }
+
+            EnterMode(m) => self.m = m,
+
+            Append(c) => {
+                let mut val = self.table.get(self.c);
+                val.push(c);
+                self.table.update(self.c, val);
+                self.draw_table();
+            }
+            Pop => {
+                let mut val = self.table.get(self.c);
+                val.pop();
+                self.table.update(self.c, val);
+                self.draw_table();
+            }
+
+            CarriageReturn => {
+                // last row? add new row
+                if self.c.y == self.table.dims().1 - 1 {
+                    self.do_action(Action::AddRowBelow);
+                }
+                self.do_action(Action::MoveCursor(Dir::Start));
+                self.do_action(Action::MoveCursor(Dir::Down));
+                self.draw_table();
+            }
+
+            Save => self.table.save_to_path(self.path.to_string()),
+            Quit => self.m = Mode::Exit,
+        }
     }
 }
 
@@ -43,99 +182,19 @@ fn main() {
     let filename = &args[1];
 
     let mut s = State::from_path(filename);
+    s.draw_table();
+    s.r.draw_status(s.m);
 
     loop {
-        match s.m {
-            Mode::Table => {
-                s.r.draw_table(&s.table, &s.c);
-                table_mode_update(&mut s);
-            }
-            Mode::Prompt(p) => prompt_mode_update(&mut s, p),
-            Mode::Insert => {
-                insert_mode_update(&mut s);
-            }
-            Mode::Exit => break,
+        let actions = input::get_actions(s.m);
+        for action in actions {
+            s.do_action(action);
         }
-    }
-}
 
-fn insert_mode_update(s: &mut State) {
-    if let Some(event) = input::read_insert_event() {
+        s.r.draw_status(s.m);
 
-    }
-}
-
-fn table_mode_update(s: &mut State) {
-    if let Some(event) = input::read_table_event() {
-        perform_table_event(s, event);
-    }
-}
-
-fn perform_table_event(s: &mut State, ev: TableEvent) {
-    use TableEvent::*;
-    match ev { 
-        Quit => s.m = Mode::Exit,
-        Save => s.table.save_to_path(s.path.to_string()),
-        ClearCell => s.table.clear(s.c),
-        NewRowBelow => {
-            s.table.add_row(s.c.y + 1);
-            s.c.move_dir(Direction::Down, &s.table);
-        }
-        NewRowAbove => s.table.add_row(s.c.y),
-        EnterInsertMode => s.m = Mode::Insert,
-        DeleteRow => {
-            s.table.delete_row(&mut s.c);
-        }
-        EnterPrompt(p) => {
-            match p {
-                Prompt::EditAppend => {
-                    let v = s.table.get(s.c.y, s.c.x);
-                    s.set_buf(&v);
-                    s.r.draw_prompt(p, &v);
-                }
-                _ => {
-                    s.r.draw_prompt(p, &String::new());
-                }
-            }
-            s.m = Mode::Prompt(p);
-        }
-        MoveCursor(dir) => s.c.move_dir(dir, &s.table),
-    }
-}
-
-fn prompt_mode_update(s: &mut State, prompt: Prompt) {
-    if let Some(event) = input::read_prompt_event() {
-        use PromptEvent::*;
-        match event {
-            Literal(c) => {
-                s.buf.push(c);
-                s.r.draw_prompt(prompt, &s.buf);
-            }
-            Backspace => {
-                s.buf.pop();
-                s.r.draw_prompt(prompt, &s.buf);
-            }
-            Submit => {
-                if let Prompt::EditReplace = prompt {
-                    let b = s.take_buf();
-                    s.table.update(s.c, b);
-                } else if let Prompt::EditAppend = prompt {
-                    let b = s.take_buf();
-                    s.table.update(s.c, b);
-                } else if let Prompt::Command = prompt {
-                    let maybe_ev = input::from_prompt(s.take_buf());
-                    if let Some(ev) = maybe_ev {
-                        return perform_table_event(s, ev);
-                    }
-                }
-                s.r.clear_prompt();
-                s.m = Mode::Table;
-            }
-            Exit => {
-                // wipe out prompt
-                s.r.clear_prompt();
-                s.m = Mode::Table;
-            }
+        if let Mode::Exit = s.m {
+            break
         }
     }
 }

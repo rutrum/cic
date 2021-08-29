@@ -2,7 +2,7 @@ use csv;
 
 use std::io::{self, Write};
 
-use crate::{Location, Cursor};
+use crate::{Cursor};
 
 /// Contains the data read from a csv
 /// Assumes nonzero columns and rows
@@ -12,6 +12,12 @@ pub struct Table {
 }
 
 impl Table {
+    pub fn new() -> Self {
+        Self {
+            data: vec![vec![String::new()]],
+        }
+    }
+
     /// Construct new table from the csv at the provided path.
     pub fn from_path(path: &str) -> Self {
         let mut rdr = csv::Reader::from_path(path).unwrap();
@@ -85,8 +91,8 @@ impl Table {
     }
 
     /// Gets a value in the table.
-    pub fn get(&self, r: usize, c: usize) -> String {
-        self.data[r][c].clone()
+    pub fn get(&self, c: Cursor) -> String {
+        self.data[c.y][c.x].clone()
     }
 
     /// Updates a value in the table.
@@ -94,11 +100,38 @@ impl Table {
         self.data[c.y][c.x] = new;
     }
 
-    /// Adds new row before the given index
-    pub fn add_row(&mut self, r: usize) {
+    /// Adds row before the cursor location.
+    pub fn add_row_before(&mut self, c: Cursor) {
+        self.add_row(c.y);
+    }
+
+    /// Adds row after the cursor location.
+    pub fn add_row_after(&mut self, c: Cursor) {
+        self.add_row(c.y + 1);
+    }
+
+    /// Adds new row before the given index.
+    fn add_row(&mut self, r: usize) {
         let (w, _) = self.dims();
         let new_row = vec![String::new(); w];
         self.data.insert(r, new_row);
+    }
+
+    /// Adds column before the cursor location.
+    pub fn add_col_before(&mut self, c: Cursor) {
+        self.add_col(c.x);
+    }
+
+    /// Adds column after the cursor location.
+    pub fn add_col_after(&mut self, c: Cursor) {
+        self.add_col(c.x + 1);
+    }
+
+    /// Inserts new column at index
+    fn add_col(&mut self, c: usize) {
+        for row in &mut self.data {
+            row.insert(c, String::new());
+        }
     }
 
     /// Clears the value in the table.
@@ -106,8 +139,16 @@ impl Table {
         self.update(c, String::new());
     }
 
+    /// Deletes the row the cursor lies.
     pub fn delete_row(&mut self, c: &mut Cursor) {
         self.data.remove(c.y);
+    }
+
+    /// Deletes the column the cursor lies.
+    pub fn delete_col(&mut self, c: &mut Cursor) {
+        for row in &mut self.data {
+            row.remove(c.x);
+        }
     }
 
     /// Writes the data as a csv to the given path.
@@ -117,18 +158,5 @@ impl Table {
             wtr.write_record(row).unwrap();
         }
         wtr.flush().unwrap();
-    }
-
-    /// Prints the table for debug usage.
-    pub fn print(&self) {
-        let mut stdout = io::stdout();
-
-        for row in self.data.iter() {
-            for item in row {
-                write!(stdout, "{:<14.12}", item).unwrap();
-            }
-            writeln!(stdout).unwrap();
-            stdout.flush().unwrap();
-        }
     }
 }
