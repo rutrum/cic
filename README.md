@@ -4,29 +4,34 @@ A command line utility for viewing and editing csvs.  Work in progress.
 
 Goal is to have somethat that appears like excel, taking up the entire terminal window and uses vim-bindings to navigate to different cells to edit them.  This will NOT have any "excel" computational functionality, it will only store/edit static data (that is, csvs).
 
-## Notes
+## Keybinds
 
-### Keybinds
+* `hjkl` for movement of the cursor by one cell
+* `g` go to top of column
+* `G` go to bottom of column
+* `0` go to first cell of row
+* `$` go to last cell of row
+* `a` to append value of current cell
+* `o` to add new row after current row
+* `O` to add new row before current row
+* `D` to delete row
+* `:` to enter prompt
 
-hjkl movement
-c update cell with new value (prompt for overwrite)
-a edit cell value (prompt with update)
-dd delete row
-o new row
+## Commands
 
-types of modes:
-* movement
-    * move direction
-    * add row
-    * delete row
-* prompt/command
-    * add column
-    * delete column (with prompt?)
-* visual
-    * move rows around
-    * move columns around?
-* insert
+* `:addcol` to add column to the right
+* `:delcol` to delete column
+* `:w` to save
+* `:q` to quit
 
-Maybe separate user input and actual commands?
+# Ideas and next steps
 
-terminal event + mode -> action
+* "insert" mode where I can use tab and enter to walk through a list of cells, like you would in excel
+* suggest commands when in prompt
+* add `c` to overwrite value in cell
+* prompt user to save changes when exiting without saving
+* allow `:wq`
+* add help menu
+* redraw on terminal size change
+* graphics options to draw lines between columns
+* search
