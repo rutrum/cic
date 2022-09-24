@@ -110,7 +110,7 @@ pub fn table_mode_actions() -> Vec<Action> {
 
             KeyCode::Char('I') => vec![EnterMode(Mode::Insert)],
 
-            KeyCode::Char('r') => vec![EnterPrompt(PromptType::EditReplace)],
+            KeyCode::Char('c') => vec![EnterPrompt(PromptType::EditReplace)],
             KeyCode::Char('a') => vec![EnterPrompt(PromptType::EditAppend)],
             KeyCode::Char(':') => vec![EnterPrompt(PromptType::Command)],
             _ => Vec::new(),
